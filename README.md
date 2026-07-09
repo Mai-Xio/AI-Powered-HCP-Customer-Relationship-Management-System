@@ -124,11 +124,3 @@ MySQL smoke test when Docker Desktop is available:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\verify-mysql.ps1
 ```
-
-## More Details
-
-See the separate requirement and demo guide:
-
-```text
-REQUIREMENTS_AND_DEMO.md
-```
