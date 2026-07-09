@@ -11,8 +11,8 @@ The main rule is simple: the user does not directly fill the final CRM form. The
 ### 1. Clone and open the project
 
 ```powershell
-git clone <your-repository-url>
-cd <your-project-folder>
+git clone https://github.com/Mai-Xio/AI-Powered-HCP-Customer-Relationship-Management-System.git
+cd AI-Powered-HCP-Customer-Relationship-Management-System
 ```
 
 ### 2. Start MySQL
