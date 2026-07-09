@@ -4,6 +4,12 @@ An AI-controlled HCP interaction logging system built for the AIVOA Full Stack D
 
 The main rule is simple: the user does not directly fill the final CRM form. The left panel is treated as an AI-managed interaction record, while the right panel assistant logs, edits, validates, and saves the interaction through LangGraph tools.
 
+**For this Assessment I would also like to mention the improvements I made along with implementing the required features.
+I have noticed that the model that is required such as the <gemma2-9b-it model> has been deprecated from Groq models
+and <llama-3.3-70b-versatile> is soon to be deprecated in August. So from my previous experience in Inferencing Cloud open source AI models and Running local AI models. I have decided to Add a Developer Settings Section to Select available models via groq. We can see live status by pinging Groq server and also select one of the available models for this demo (I only added this since this is a demo and wanted to make sure smoother working of the Application)
+
+I also plan to integrate a voice mode to hook it up with Whisper Large V3 Turbo for Better user experience by enabling Voiced natural language commands for auto filling the forms.**
+
 ![Split-screen UI](docs/ui-verified.png)
 
 ## Quick Start
