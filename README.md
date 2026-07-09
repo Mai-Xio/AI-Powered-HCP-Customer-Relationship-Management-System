@@ -119,7 +119,7 @@ cd frontend
 npm run build
 ```
 
-MySQL smoke test when Docker Desktop is available:
+MySQL smoke test after setting up Docker Desktop:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\verify-mysql.ps1
