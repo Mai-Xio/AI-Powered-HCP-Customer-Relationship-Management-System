@@ -4,6 +4,22 @@ An AI-controlled HCP interaction logging system built for the AIVOA Full Stack D
 
 The main rule is simple: the user does not directly fill the final CRM form. The left panel is treated as an AI-managed interaction record, while the right panel assistant logs, edits, validates, and saves the interaction through LangGraph tools.
 
+**For this Assessment I would also like to mention the improvements I made along with implementing the required features.**
+
+- I have noticed that the model that is required such as the <gemma2-9b-it> model has been deprecated from Groq models
+and <llama-3.3-70b-versatile> model is soon to be deprecated in August. So from my previous experience in Inferencing Cloud open source AI models and Running local AI models. I have decided to Add a Developer Settings Section to Select available models via groq. We can see live status by pinging Groq server and also select one of the available models for this demo **(I only added this since this is a demo and wanted to make sure smoother working of the Application)**
+
+**I also plan to integrate a voice mode to hook it up with Whisper Large V3 Turbo for Better user experience by enabling Voiced natural language commands for auto filling the forms.**
+
+**Update - July 14: The planned voice mode is now implemented.**
+
+- Added voice input using Groq Whisper Large V3 Turbo, with transcript review before AI logging.
+- Added live date and time handling for `today`, `now`, and explicitly requested timezones.
+- Added `get_current_datetime`, bringing the project to nine registered LangGraph tools.
+- Added compact chips that clearly show the tools used for each assistant response.
+- Updated the default display to `DD/MM/YYYY` with 12-hour time.
+- Expanded automated verification to 20 passing backend tests.
+
 ![Split-screen UI](docs/ui-verified.png)
 
 ## Quick Start
@@ -11,8 +27,8 @@ The main rule is simple: the user does not directly fill the final CRM form. The
 ### 1. Clone and open the project
 
 ```powershell
-git clone <your-repository-url>
-cd <your-project-folder>
+git clone https://github.com/Mai-Xio/AI-Powered-HCP-Customer-Relationship-Management-System.git
+cd AI-Powered-HCP-Customer-Relationship-Management-System
 ```
 
 ### 2. Start MySQL
@@ -119,25 +135,8 @@ cd frontend
 npm run build
 ```
 
-MySQL smoke test when Docker Desktop is available:
+MySQL smoke test after setting up Docker Desktop:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\verify-mysql.ps1
 ```
-
-## More Details
-
-See the separate requirement and demo guide:
-
-```text
-REQUIREMENTS_AND_DEMO.md
-```
-
-## Update - July 14
-
-- Added voice input using Groq Whisper Large V3 Turbo, with transcript review before AI logging.
-- Added live date and time handling for `today`, `now`, and explicitly requested timezones.
-- Added `get_current_datetime`, bringing the project to nine registered LangGraph tools.
-- Added compact chips that clearly show the tools used for each assistant response.
-- Updated the default display to `DD/MM/YYYY` with 12-hour time.
-- Expanded automated verification to 20 passing backend tests.
