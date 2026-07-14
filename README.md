@@ -18,7 +18,7 @@ and <llama-3.3-70b-versatile> model is soon to be deprecated in August. So from 
 - Added `get_current_datetime`, bringing the project to nine registered LangGraph tools.
 - Added compact chips that clearly show the tools used for each assistant response.
 - Updated the default display to `DD/MM/YYYY` with 12-hour time.
-- Expanded automated verification to 20 passing backend tests.
+- Expanded automated verification to 23 passing backend tests.
 
 ![Verified AI-controlled interaction saved to MySQL](docs/ui-ai-mysql-saved.png)
 
@@ -128,6 +128,16 @@ User message
   -> Redux refreshes the read-only form
 ```
 
+Batch flow:
+
+```text
+Up to three natural-language interaction logs
+  -> FastAPI /api/agent/batch
+  -> the same LangGraph planner and tools run once per record
+  -> React review sheet
+  -> one atomic MySQL transaction through /api/interactions/batch
+```
+
 ## Key Features
 
 - AI-controlled split-screen HCP logging interface
@@ -136,14 +146,20 @@ User message
 - Structured assisted logging mode
 - Surgical field correction through the Edit Interaction tool
 - Timezone, date-format, and 12h/24h time-format controls
+- Live timezone and formatting indicators beside Interaction Details
 - UTC timestamp storage with display preferences
 - AI validation and compliance guardrail checks
+- Three-record batch processing with a review sheet and atomic Save All
 - Save AI Draft to SQL database
 - Export current AI-filled draft as CSV
 - Responsive layout for desktop and mobile screens
 - Google Inter font for assessment compliance
 
+![Live timezone, date format, and time format indicators](docs/ui-format-strip.png)
+
 ![Timezone, date format, time format, and utility settings](docs/ui-settings.png)
+
+![Batch interaction review sheet before atomic MySQL save](docs/ui-batch.png)
 
 ## How MySQL Is Used
 

@@ -29,10 +29,28 @@ export function chatWithAgent(message, currentDraft, preferences, plannerModel) 
   });
 }
 
+export function batchWithAgent(entries, preferences, plannerModel) {
+  return request("/agent/batch", {
+    method: "POST",
+    body: JSON.stringify({
+      entries,
+      preferences,
+      planner_model: plannerModel || null,
+    }),
+  });
+}
+
 export function saveInteraction(draft) {
   return request("/interactions", {
     method: "POST",
     body: JSON.stringify(draft),
+  });
+}
+
+export function saveBatchInteractions(interactions) {
+  return request("/interactions/batch", {
+    method: "POST",
+    body: JSON.stringify({ interactions }),
   });
 }
 

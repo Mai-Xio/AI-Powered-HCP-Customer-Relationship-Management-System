@@ -19,6 +19,8 @@ Voice or typed description
 
 Whisper does speech-to-text. It does not fill the form by itself. LangGraph and the planner LLM still control which CRM tools run, which preserves the main assessment requirement.
 
+The active timezone, date format, and time format are always visible beside **Interaction Details**. The values come from the same preferences used by the AI tools, so the display and saved record cannot silently disagree.
+
 ## Nine Implemented LangGraph Tools
 
 1. `log_interaction` extracts and fills a new interaction. This is mandatory.
@@ -51,6 +53,22 @@ Change the sentiment to neutral and the time to 5 PM. Keep everything else the s
 
 Point out that `edit_interaction` changes only those two fields.
 
+## Batch Demo
+
+The batch workspace is the same architecture repeated safely for multiple records. Each non-empty line is treated as one independent interaction, and each interaction gets its own LLM plan, LangGraph execution, tool trace, validation result, and structured draft.
+
+The assessment build accepts up to three logs at a time. This is intentionally small enough for a clear review sheet and leaves room under the configured Groq free-tier planner budget.
+
+```text
+Three natural-language logs
+  -> three independent LangGraph runs
+  -> review sheet
+  -> Save All
+  -> one atomic MySQL transaction
+```
+
+The review sheet shows the HCP, normalized date and time, sentiment, focus, number of tools used, and validation status. Nothing is saved while it is only being reviewed. **Save All** sends the ready rows to one database transaction, which prevents a partially saved batch.
+
 ## Requirement Justification
 
 | Requirement | How the project satisfies it |
@@ -65,6 +83,7 @@ Point out that `edit_interaction` changes only those two fields.
 | SQL database | Saved drafts are persisted to MySQL or PostgreSQL through SQLAlchemy |
 | Responsive UI | Desktop split view becomes a stacked mobile layout without editable form controls |
 | Date and time organization | Timestamps are normalized to UTC while preserving timezone and display preferences |
+| Batch input | Up to three independent natural-language logs reuse the same LLM and LangGraph pipeline, then appear in a review sheet before an atomic save |
 
 ## Suggested 10-15 Minute Video Order
 
@@ -74,5 +93,6 @@ Point out that `edit_interaction` changes only those two fields.
 4. Demo all nine tools, grouping the six automatic tools shown after logging.
 5. Demo `edit_interaction` with a two-field correction.
 6. Show the LangGraph graph, tool registry, FastAPI routes, and React components.
-7. Save the draft to MySQL and export CSV.
-8. End with the requirement-justification table above.
+7. Demo the three-record batch workspace and explain the review-before-save design.
+8. Save the single draft and the batch to MySQL, then export CSV.
+9. End with the requirement-justification table above.

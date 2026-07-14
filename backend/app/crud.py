@@ -63,3 +63,16 @@ def save_interaction(db: Session, draft: InteractionDraft) -> Interaction:
     db.commit()
     db.refresh(interaction)
     return interaction
+
+
+def save_interactions(db: Session, drafts: list[InteractionDraft]) -> list[Interaction]:
+    interactions = [Interaction(**draft.model_dump()) for draft in drafts]
+    try:
+        db.add_all(interactions)
+        db.commit()
+        for interaction in interactions:
+            db.refresh(interaction)
+    except Exception:
+        db.rollback()
+        raise
+    return interactions

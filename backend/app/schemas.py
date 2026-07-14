@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class InteractionPreferences(BaseModel):
@@ -85,6 +85,36 @@ class ChatResponse(BaseModel):
     tool_trace: list[ToolTrace]
     planner_mode: Literal["llm", "error"] = "llm"
     planner_model: str = ""
+
+
+class BatchChatRequest(BaseModel):
+    entries: list[str] = Field(min_length=1, max_length=3)
+    preferences: InteractionPreferences = Field(default_factory=InteractionPreferences)
+    planner_model: str | None = Field(
+        default=None, description="Optional Groq model id override selected in the Developer panel."
+    )
+
+    @field_validator("entries")
+    @classmethod
+    def normalize_entries(cls, entries: list[str]) -> list[str]:
+        normalized = [entry.strip() for entry in entries]
+        if any(not entry for entry in normalized):
+            raise ValueError("Batch entries cannot be empty.")
+        return normalized
+
+
+class BatchChatResult(BaseModel):
+    source_text: str
+    response: ChatResponse | None = None
+    error: str = ""
+
+
+class BatchChatResponse(BaseModel):
+    results: list[BatchChatResult]
+
+
+class BatchSaveRequest(BaseModel):
+    interactions: list[InteractionDraft] = Field(min_length=1, max_length=3)
 
 
 class AudioTranscriptionResponse(BaseModel):
