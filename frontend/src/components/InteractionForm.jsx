@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Clock3,
   Gift,
+  Globe2,
   Leaf,
   MessageSquareText,
   NotebookText,
@@ -95,7 +96,21 @@ export default function InteractionForm({ draft }) {
           <Gift size={20} />
           Interaction Details
         </h2>
-        <span />
+        <div className="active-format-strip" aria-label="Active date and time preferences">
+          <span title="Current interaction timezone">
+            <Globe2 size={13} />
+            {draft.interaction_timezone || "Asia/Kolkata"}
+          </span>
+          <span title="Current date format">
+            <CalendarDays size={13} />
+            {draft.date_format || "DD/MM/YYYY"}
+          </span>
+          <span title="Current time format">
+            <Clock3 size={13} />
+            {draft.time_format === "24h" ? "24-hour" : "12-hour"}
+          </span>
+        </div>
+        <span className="section-rule" />
       </div>
 
       <div className="form-grid">

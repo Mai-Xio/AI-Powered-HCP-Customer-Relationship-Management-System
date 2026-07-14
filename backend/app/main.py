@@ -12,11 +12,15 @@ from app.agent import run_agent
 from app.agent.model_catalog import catalog_with_context, check_model
 from app.agent.tools import TOOL_LABELS, TOOL_REGISTRY
 from app.config import get_settings
-from app.crud import list_hcp_profiles, save_interaction, seed_hcp_profiles
+from app.crud import list_hcp_profiles, save_interaction, save_interactions, seed_hcp_profiles
 from app.db import Base, SessionLocal, engine, get_db
 from app.models import HCPProfile, Interaction
 from app.schemas import (
     AudioTranscriptionResponse,
+    BatchChatRequest,
+    BatchChatResponse,
+    BatchChatResult,
+    BatchSaveRequest,
     ChatRequest,
     ChatResponse,
     HCPProfileOut,
@@ -97,6 +101,34 @@ def chat(request: ChatRequest) -> ChatResponse:
     )
 
 
+@app.post(f"{settings.api_prefix}/agent/batch", response_model=BatchChatResponse)
+def batch_chat(request: BatchChatRequest) -> BatchChatResponse:
+    results: list[BatchChatResult] = []
+    for source_text in request.entries:
+        try:
+            response = run_agent(
+                source_text,
+                InteractionDraft(),
+                request.preferences,
+                model_override=request.planner_model,
+            )
+            if response.planner_mode == "error":
+                results.append(
+                    BatchChatResult(source_text=source_text, error=response.assistant_message)
+                )
+            else:
+                results.append(BatchChatResult(source_text=source_text, response=response))
+        except Exception:
+            logger.exception("Batch interaction failed during LangGraph execution.")
+            results.append(
+                BatchChatResult(
+                    source_text=source_text,
+                    error="This interaction could not be processed. Review it and try again.",
+                )
+            )
+    return BatchChatResponse(results=results)
+
+
 @app.post(f"{settings.api_prefix}/audio/transcribe", response_model=AudioTranscriptionResponse)
 async def transcribe_voice(file: UploadFile = File(...)) -> dict[str, str]:
     data = await file.read(settings.voice_max_upload_bytes + 1)
@@ -140,3 +172,13 @@ def create_interaction(
     if not database_ready:
         raise HTTPException(status_code=503, detail="The SQL database is currently unavailable.")
     return save_interaction(db, draft)
+
+
+@app.post(f"{settings.api_prefix}/interactions/batch", response_model=list[InteractionOut])
+def create_interaction_batch(
+    request: BatchSaveRequest,
+    db: Session = Depends(get_db),
+) -> list[Interaction]:
+    if not database_ready:
+        raise HTTPException(status_code=503, detail="The SQL database is currently unavailable.")
+    return save_interactions(db, request.interactions)

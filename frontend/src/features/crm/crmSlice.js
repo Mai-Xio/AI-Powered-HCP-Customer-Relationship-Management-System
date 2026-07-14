@@ -1,5 +1,12 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { chatWithAgent, checkModels, fetchModels, saveInteraction } from "./api.js";
+import {
+  batchWithAgent,
+  chatWithAgent,
+  checkModels,
+  fetchModels,
+  saveBatchInteractions,
+  saveInteraction,
+} from "./api.js";
 
 function defaultTimezone() {
   const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
@@ -149,6 +156,27 @@ export const saveDraft = createAsyncThunk("crm/saveDraft", async (_, { getState 
   return saveInteraction(draft);
 });
 
+export const processBatchLogs = createAsyncThunk(
+  "crm/processBatchLogs",
+  async (entries, { getState }) => {
+    const { preferences, plannerModel } = getState().crm;
+    return batchWithAgent(entries, preferences, plannerModel);
+  },
+);
+
+export const saveBatchLogs = createAsyncThunk("crm/saveBatchLogs", async (_, { getState }) => {
+  const { batchResults } = getState().crm;
+  const interactions = batchResults
+    .filter(
+      (item) =>
+        item.response &&
+        !item.error &&
+        item.response.draft.completion_status === "Validated",
+    )
+    .map((item) => item.response.draft);
+  return saveBatchInteractions(interactions);
+});
+
 export const loadModels = createAsyncThunk("crm/loadModels", async () => fetchModels());
 
 export const checkModelStatuses = createAsyncThunk(
@@ -183,6 +211,11 @@ const initialState = {
   saveStatus: "idle",
   error: "",
   savedInteractionId: null,
+  batchResults: [],
+  batchStatus: "idle",
+  batchSaveStatus: "idle",
+  batchSavedIds: [],
+  batchError: "",
 };
 
 const crmSlice = createSlice({
@@ -208,6 +241,13 @@ const crmSlice = createSlice({
     },
     setPlannerModel(state, action) {
       state.plannerModel = action.payload;
+    },
+    clearBatch(state) {
+      state.batchResults = [];
+      state.batchStatus = "idle";
+      state.batchSaveStatus = "idle";
+      state.batchSavedIds = [];
+      state.batchError = "";
     },
   },
   extraReducers: (builder) => {
@@ -278,9 +318,36 @@ const crmSlice = createSlice({
       .addCase(saveDraft.rejected, (state, action) => {
         state.saveStatus = "failed";
         state.error = action.error.message ?? "Save failed";
+      })
+      .addCase(processBatchLogs.pending, (state) => {
+        state.batchStatus = "loading";
+        state.batchSaveStatus = "idle";
+        state.batchSavedIds = [];
+        state.batchError = "";
+      })
+      .addCase(processBatchLogs.fulfilled, (state, action) => {
+        state.batchStatus = "ready";
+        state.batchResults = action.payload.results || [];
+      })
+      .addCase(processBatchLogs.rejected, (state, action) => {
+        state.batchStatus = "failed";
+        state.batchResults = [];
+        state.batchError = action.error.message ?? "Batch processing failed";
+      })
+      .addCase(saveBatchLogs.pending, (state) => {
+        state.batchSaveStatus = "loading";
+        state.batchError = "";
+      })
+      .addCase(saveBatchLogs.fulfilled, (state, action) => {
+        state.batchSaveStatus = "saved";
+        state.batchSavedIds = action.payload.map((item) => item.id);
+      })
+      .addCase(saveBatchLogs.rejected, (state, action) => {
+        state.batchSaveStatus = "failed";
+        state.batchError = action.error.message ?? "Batch save failed";
       });
   },
 });
 
-export const { resetDraft, setPreference, setPlannerModel } = crmSlice.actions;
+export const { clearBatch, resetDraft, setPreference, setPlannerModel } = crmSlice.actions;
 export default crmSlice.reducer;
