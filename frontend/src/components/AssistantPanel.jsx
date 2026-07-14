@@ -11,9 +11,10 @@ import {
   FileDown,
   Globe2,
   Loader2,
-  Paperclip,
+  Mic,
   SendHorizonal,
   Settings2,
+  Square,
   Wrench,
   X,
 } from "lucide-react";
@@ -28,6 +29,26 @@ import {
   setPreference,
 } from "../features/crm/crmSlice.js";
 import { downloadDraftCsv } from "../features/crm/exportCsv.js";
+import { transcribeAudio } from "../features/crm/api.js";
+
+const MAX_RECORDING_SECONDS = 120;
+const MAX_RECORDING_BYTES = 20 * 1024 * 1024;
+
+function recordingFormat() {
+  const formats = [
+    { mimeType: "audio/webm;codecs=opus", extension: "webm" },
+    { mimeType: "audio/webm", extension: "webm" },
+    { mimeType: "audio/mp4", extension: "mp4" },
+    { mimeType: "audio/ogg;codecs=opus", extension: "ogg" },
+  ];
+  if (typeof MediaRecorder === "undefined") return null;
+  return formats.find(({ mimeType }) => MediaRecorder.isTypeSupported(mimeType)) || null;
+}
+
+function formatRecordingTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
 
 function shortModel(id) {
   if (!id) return "";
@@ -52,6 +73,13 @@ const DATE_FORMATS = ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD", "DD MMM YYYY"];
 function Message({ message }) {
   const isAssistant = message.role === "assistant";
   const Avatar = isAssistant ? Bot : Cpu;
+  const tools = Array.from(
+    new Map(
+      (message.tools || [])
+        .filter((tool) => tool.status === "completed" || tool.status === "needs_review")
+        .map((tool) => [tool.name, tool]),
+    ).values(),
+  );
 
   return (
     <article className={`message-row ${isAssistant ? "assistant-row" : "user-row"}`}>
@@ -60,6 +88,23 @@ function Message({ message }) {
       </div>
       <div className={`message ${isAssistant ? "assistant-message" : "user-message"}`}>
         <div className="message-body">{message.content}</div>
+        {isAssistant && tools.length ? (
+          <div className="tool-trace" aria-label="LangGraph tools used">
+            <span className="tool-trace-label">Tools used</span>
+            <div className="tool-chip-list">
+              {tools.map((tool) => (
+                <span
+                  className={`tool-chip tool-${tool.status}`}
+                  key={tool.name}
+                  title={tool.summary || `${tool.label || tool.name} completed`}
+                >
+                  <CheckCircle2 size={12} aria-hidden="true" />
+                  {tool.label || tool.name.replaceAll("_", " ")}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </article>
   );
@@ -294,6 +339,9 @@ export default function AssistantPanel() {
   const [activeMode, setActiveMode] = useState("chat");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [devOpen, setDevOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("idle");
+  const [voiceError, setVoiceError] = useState("");
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [structuredInput, setStructuredInput] = useState({
     hcpName: "",
     organization: "",
@@ -305,6 +353,10 @@ export default function AssistantPanel() {
     followUpActions: "",
   });
   const scrollRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
 
   useEffect(() => {
     dispatch(loadModels());
@@ -313,6 +365,15 @@ export default function AssistantPanel() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, status]);
+
+  useEffect(
+    () => () => {
+      window.clearInterval(recordingTimerRef.current);
+      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    },
+    [],
+  );
 
   const canSave = Boolean(draft.hcp_name && draft.topics_discussed);
   const canExport = Boolean(draft.hcp_name || draft.topics_discussed || draft.interaction_summary);
@@ -323,6 +384,84 @@ export default function AssistantPanel() {
     if (!trimmed || status === "loading") return;
     dispatch(sendAgentMessage(trimmed));
     setInput("");
+  }
+
+  function releaseMicrophone() {
+    window.clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }
+
+  function stopRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder?.state === "recording") recorder.stop();
+  }
+
+  async function startRecording() {
+    setVoiceError("");
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setVoiceError("Voice recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      const format = recordingFormat();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, format ? { mimeType: format.mimeType } : undefined);
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+      setRecordingSeconds(0);
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size) audioChunksRef.current.push(event.data);
+      });
+      recorder.addEventListener("stop", async () => {
+        releaseMicrophone();
+        setVoiceStatus("transcribing");
+        const mimeType = recorder.mimeType || format?.mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        audioChunksRef.current = [];
+        if (!blob.size) {
+          setVoiceStatus("idle");
+          setVoiceError("No audio was captured. Please try again.");
+          return;
+        }
+        if (blob.size > MAX_RECORDING_BYTES) {
+          setVoiceStatus("idle");
+          setVoiceError("That recording is too large. Please keep voice notes under two minutes.");
+          return;
+        }
+
+        try {
+          const extension = format?.extension || (mimeType.includes("mp4") ? "mp4" : "webm");
+          const result = await transcribeAudio(blob, `hcp-voice-note.${extension}`);
+          setInput((current) => (current.trim() ? `${current.trim()}\n${result.text}` : result.text));
+          setVoiceStatus("idle");
+        } catch (error) {
+          setVoiceStatus("idle");
+          setVoiceError(error.message || "Voice transcription failed.");
+        }
+      });
+
+      recorder.start(1000);
+      setVoiceStatus("recording");
+      let elapsed = 0;
+      recordingTimerRef.current = window.setInterval(() => {
+        elapsed += 1;
+        setRecordingSeconds(elapsed);
+        if (elapsed >= MAX_RECORDING_SECONDS && recorder.state === "recording") recorder.stop();
+      }, 1000);
+    } catch (error) {
+      releaseMicrophone();
+      setVoiceStatus("idle");
+      setVoiceError(
+        error.name === "NotAllowedError"
+          ? "Microphone permission was denied. Allow access and try again."
+          : "The microphone could not be started. Please try again.",
+      );
+    }
   }
 
   function updateStructuredField(key, value) {
@@ -490,22 +629,49 @@ export default function AssistantPanel() {
         </div>
 
         <form className={`chat-composer ${activeMode === "chat" ? "" : "hidden-composer"}`} onSubmit={submit}>
-          <label className="composer-box">
-            <textarea
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="Describe interaction..."
-              rows={3}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  submit(event);
-                }
-              }}
-            />
-            <Paperclip size={18} />
-          </label>
-          <button className="agent-submit" type="submit" disabled={status === "loading" || !input.trim()}>
+          <div className="composer-column">
+            <div className={`composer-box ${voiceStatus === "recording" ? "is-recording" : ""}`}>
+              <textarea
+                aria-label="Interaction description"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="Describe interaction or record a voice note..."
+                rows={3}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    submit(event);
+                  }
+                }}
+              />
+              <button
+                className="voice-control"
+                type="button"
+                aria-label={voiceStatus === "recording" ? "Stop recording" : "Record voice note"}
+                title={voiceStatus === "recording" ? "Stop recording" : "Record voice note"}
+                disabled={voiceStatus === "transcribing" || status === "loading"}
+                onClick={voiceStatus === "recording" ? stopRecording : startRecording}
+              >
+                {voiceStatus === "recording" ? <Square size={14} fill="currentColor" /> : <Mic size={18} />}
+                <span>
+                  {voiceStatus === "recording"
+                    ? formatRecordingTime(recordingSeconds)
+                    : voiceStatus === "transcribing"
+                      ? "Transcribing..."
+                      : "Voice"}
+                </span>
+              </button>
+            </div>
+            {voiceError ? <p className="voice-message voice-error">{voiceError}</p> : null}
+            {voiceStatus === "transcribing" ? (
+              <p className="voice-message"><Loader2 size={13} className="spin" /> Converting speech to text...</p>
+            ) : null}
+          </div>
+          <button
+            className="agent-submit"
+            type="submit"
+            disabled={status === "loading" || voiceStatus !== "idle" || !input.trim()}
+          >
             {status === "loading" ? <Loader2 className="spin" size={22} /> : <SendHorizonal size={23} />}
             <span>AI Log</span>
           </button>

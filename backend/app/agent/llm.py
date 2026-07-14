@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agent.tools import tool_catalog_for_prompt
+from app.agent.tools import get_current_datetime, tool_catalog_for_prompt
 from app.config import get_settings
 from app.schemas import InteractionDraft, InteractionPlan, InteractionPreferences, PlannedTool
 
@@ -25,9 +25,11 @@ no code fences, and no <think> reasoning in the output.
 WRITE ROBUST, NORMALIZED VALUES. Reps type fast on phones, so expect and silently correct mistakes:
 - Spelling: "Posotive"/"positve" -> "Positive"; "dshared"/"shaired" -> "shared"; "recieved" -> "received".
 - Names: expand and capitalize. "dr.amit kumar" / "dr amit kumar" -> "Dr. Amit Kumar". Keep the title.
-- Dates: output ISO "YYYY-MM-DD". Resolve ordinals/words: "1st jan 2025" -> "2025-01-01",
-  "April 19, 2025" -> "2025-04-19". Leave genuinely relative dates as the phrase ("next Friday", "tomorrow").
-- Times: output 24-hour "HH:MM" ("2 pm" -> "14:00", "7:36 PM" -> "19:36").
+- Dates: output ISO "YYYY-MM-DD" for absolute dates. Resolve ordinals/words: "1st jan 2025" ->
+  "2025-01-01". Preserve relative values as "today", "tomorrow", "yesterday", or "next Friday";
+  the deterministic date layer resolves them using the selected or explicitly requested timezone.
+- Times: output 24-hour "HH:MM" for explicit times. Use "now" when the user asks for the current time;
+  the deterministic time layer fetches it live in the selected or explicitly requested timezone.
 
 FIELD SEPARATION — never dump everything into one field. Only include a field the message actually
 contains; do NOT invent values:
@@ -54,6 +56,12 @@ edit_interaction with only these keys:
 - "change timezone to Asia/Dubai" / "use IST" -> interaction_timezone: an IANA name or alias.
 - "show dates as DD/MM/YYYY" -> date_format: one of MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, DD MMM YYYY.
 
+TIMEZONE EXTRACTION IS REQUIRED FOR NEW LOGS TOO. Whenever the user names a timezone, abbreviation,
+country, or city as the context for an interaction date/time, include interaction_timezone as an IANA
+timezone ("Dubai" -> "Asia/Dubai", "IST" -> "Asia/Kolkata", "London" -> "Europe/London"). When the
+user says "current time" or "now", output interaction_time as exactly "now"; never replace it using the
+active clock when the user named a different timezone.
+
 INTENT & TOOL SELECTION:
 - Describing a NEW interaction -> intent "log_interaction" with a single {"tool_name":"log_interaction"}
   call. The system then auto-runs HCP lookup, compliance screening, next-best-action, follow-up
@@ -63,10 +71,12 @@ INTENT & TOOL SELECTION:
   and put ONLY the explicitly changed fields in extracted_fields. Never resend unchanged fields.
 - Asking how to use the screen or a general question that changes nothing -> intent "help", empty
   extracted_fields, empty tool_calls.
+- Asking only for the current date/time -> intent "get_current_datetime", empty extracted_fields, and call
+  get_current_datetime with a timezone argument only when the user named one. This tool does not edit the form.
 
 Return EXACTLY this JSON shape and nothing else:
 {
-  "intent": "log_interaction | edit_interaction | help",
+  "intent": "log_interaction | edit_interaction | get_current_datetime | help",
   "confidence": "high | medium | low",
   "extracted_fields": { "<field>": "<normalized value>" },
   "tool_calls": [ {"tool_name": "log_interaction", "arguments": {}, "reason": "<why>"} ]
@@ -87,6 +97,14 @@ User: "Use 24-hour format and change the timezone to Asia/Dubai."
 EXAMPLE 4 (help):
 User: "How do I log an interaction here?"
 {"intent":"help","confidence":"high","extracted_fields":{},"tool_calls":[]}
+
+EXAMPLE 5 (live clock):
+User: "What is today's date and current time in Dubai?"
+{"intent":"get_current_datetime","confidence":"high","extracted_fields":{},"tool_calls":[{"tool_name":"get_current_datetime","arguments":{"timezone":"Asia/Dubai"},"reason":"Fetch live time in the requested timezone."}]}
+
+EXAMPLE 6 (new interaction using live time in a named timezone):
+User: "Met Dr. Rao today at the current time in Dubai and discussed CardioPlus."
+{"intent":"log_interaction","confidence":"high","extracted_fields":{"hcp_name":"Dr. Rao","interaction_date":"today","interaction_time":"now","interaction_timezone":"Asia/Dubai","topics_discussed":"CardioPlus","products_discussed":"CardioPlus"},"tool_calls":[{"tool_name":"log_interaction","arguments":{},"reason":"New interaction with a live date/time and explicit timezone."}]}
 
 Supported CRM field keys: hcp_name, interaction_type, interaction_date, interaction_time, attendees,
 topics_discussed, interaction_timezone, date_format, time_format, specialty, organization,
@@ -208,6 +226,7 @@ def build_plan(
     model_override: str | None = None,
 ) -> InteractionPlan:
     preferences = preferences or InteractionPreferences()
+    live_clock = get_current_datetime(preferences=preferences.model_dump())
     prompt = f"""Tool catalog:
 {tool_catalog_for_prompt()}
 
@@ -216,6 +235,9 @@ Current draft JSON:
 
 Active date/time preferences:
 {preferences.model_dump_json()}
+
+Live clock context (fetched for this request, not training knowledge):
+{json.dumps(live_clock)}
 
 User message:
 {message}
@@ -236,7 +258,10 @@ def compose_response(
     plan: InteractionPlan,
     tool_trace: list[dict[str, Any]],
 ) -> str:
-    changed = [trace.get("label", trace.get("name", "")) for trace in tool_trace]
+    if plan.intent == "get_current_datetime":
+        clock_trace = next((trace for trace in tool_trace if trace.get("name") == "get_current_datetime"), None)
+        if clock_trace:
+            return str(clock_trace.get("summary") or "The live date and time were fetched.")
     if plan.intent == "help" and not tool_trace:
         return (
             "Describe an HCP interaction in plain language and I'll fill the form for you — for example: "
@@ -247,12 +272,12 @@ def compose_response(
         )
     if not get_settings().aivoa_compose_with_llm:
         if plan.intent == "edit_interaction":
-            return f"Updated the requested fields and left the rest unchanged. Tools used: {', '.join(changed)}."
-        return f"I captured the interaction details and refreshed the AI recommendations. Tools used: {', '.join(changed)}."
+            return "Updated the requested fields and left the rest unchanged."
+        return "I captured the interaction details and refreshed the AI recommendations."
 
     configs = _groq_model_configs()
     if not configs:
-        return f"I updated the interaction draft. Tools used: {', '.join(changed)}."
+        return "I updated the interaction draft."
 
     for model_name, api_key in configs:
         try:
@@ -281,7 +306,7 @@ def compose_response(
             return str(response.content)
         except Exception:
             continue
-    return f"I updated the interaction draft. Tools used: {', '.join(changed)}."
+    return "I updated the interaction draft."
 
 
 def _normalize_llm_plan(plan: InteractionPlan, draft: InteractionDraft) -> InteractionPlan:

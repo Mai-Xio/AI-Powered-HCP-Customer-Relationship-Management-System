@@ -1,7 +1,6 @@
 .venv/
 .venv-aivoa/
 venv/
-.claude/
 __pycache__/
 *.py[cod]
 *.sqlite

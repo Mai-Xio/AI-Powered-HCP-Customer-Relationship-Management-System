@@ -110,7 +110,7 @@ export default function InteractionForm({ draft }) {
         <ReadField
           label="Date"
           value={draft.interaction_date}
-          placeholder="MM/DD/YYYY"
+          placeholder={draft.date_format || "DD/MM/YYYY"}
           icon={CalendarDays}
         />
         <ReadField

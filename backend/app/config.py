@@ -11,7 +11,10 @@ class Settings(BaseSettings):
     groq_api_key: str | None = None
     aivoa_use_live_llm: bool = False
     aivoa_groq_calls_per_minute: int = 6
+    aivoa_voice_calls_per_minute: int = 4
     aivoa_compose_with_llm: bool = False
+    groq_transcription_model: str = "whisper-large-v3-turbo"
+    voice_max_upload_bytes: int = 20 * 1024 * 1024
     # The assignment named gemma2-9b-it (now decommissioned on Groq) and
     # llama-3.3-70b-versatile (deprecating 2026-08-16). Default to Groq's
     # recommended, still-supported replacements; both are switchable at runtime

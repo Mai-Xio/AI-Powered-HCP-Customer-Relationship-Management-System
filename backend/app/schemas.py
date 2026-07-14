@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class InteractionPreferences(BaseModel):
     timezone: str = "Asia/Kolkata"
-    date_format: Literal["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD", "DD MMM YYYY"] = "MM/DD/YYYY"
+    date_format: Literal["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD", "DD MMM YYYY"] = "DD/MM/YYYY"
     time_format: Literal["12h", "24h"] = "12h"
 
 
@@ -20,7 +20,7 @@ class InteractionDraft(BaseModel):
     interaction_datetime_utc: datetime | None = None
     interaction_timezone: str = "Asia/Kolkata"
     original_timezone: str = "Asia/Kolkata"
-    date_format: str = "MM/DD/YYYY"
+    date_format: str = "DD/MM/YYYY"
     time_format: str = "12h"
     time_format_preference: str = "12h"
     attendees: list[str] = Field(default_factory=list)
@@ -87,6 +87,11 @@ class ChatResponse(BaseModel):
     planner_model: str = ""
 
 
+class AudioTranscriptionResponse(BaseModel):
+    text: str
+    model: str
+
+
 class PlannedTool(BaseModel):
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
@@ -103,6 +108,7 @@ class InteractionPlan(BaseModel):
         "compliance_review",
         "validate_interaction",
         "summarize_interaction",
+        "get_current_datetime",
         "help",
     ] = "log_interaction"
     tool_calls: list[PlannedTool] = Field(default_factory=list)

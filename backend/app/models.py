@@ -35,7 +35,7 @@ class Interaction(Base):
     interaction_datetime_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     interaction_timezone: Mapped[str] = mapped_column(String(80), default="Asia/Kolkata")
     original_timezone: Mapped[str] = mapped_column(String(80), default="Asia/Kolkata")
-    date_format: Mapped[str] = mapped_column(String(24), default="MM/DD/YYYY")
+    date_format: Mapped[str] = mapped_column(String(24), default="DD/MM/YYYY")
     time_format: Mapped[str] = mapped_column(String(8), default="12h")
     time_format_preference: Mapped[str] = mapped_column(String(8), default="12h")
     attendees: Mapped[list[str]] = mapped_column(JSON, default=list)

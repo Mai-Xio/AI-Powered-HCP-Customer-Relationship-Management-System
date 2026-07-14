@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import difflib
 import re
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone as datetime_timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -154,6 +154,10 @@ def _safe_timezone(name: str) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
+def _now_in_timezone(timezone_name: str) -> datetime:
+    return datetime.now(_safe_timezone(timezone_name))
+
+
 def _preferences(preferences: dict[str, Any] | InteractionPreferences | None = None) -> InteractionPreferences:
     if isinstance(preferences, InteractionPreferences):
         return preferences
@@ -176,7 +180,7 @@ def _parse_date(value: str, preferences: InteractionPreferences | None = None) -
     prefs = preferences or InteractionPreferences()
     raw = value.strip()
     lower = raw.lower()
-    today = datetime.now(_safe_timezone(prefs.timezone)).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = _now_in_timezone(prefs.timezone).replace(hour=0, minute=0, second=0, microsecond=0)
     if lower in {"today", "now"}:
         return today
     if lower == "tomorrow":
@@ -236,6 +240,9 @@ def _parse_time(value: str, preferences: InteractionPreferences | None = None) -
     if not value:
         return None
     raw = value.strip().upper().replace(".", "")
+    prefs = preferences or InteractionPreferences()
+    if raw in {"NOW", "CURRENT TIME", "CURRENT"}:
+        return _now_in_timezone(prefs.timezone).time().replace(second=0, microsecond=0)
     if raw in {"NOON", "12 NOON"}:
         return time(hour=12)
     if raw in {"MIDNIGHT", "12 MIDNIGHT"}:
@@ -291,21 +298,33 @@ def _normalize_patch(
         "time_format_preference": "time_format",
     }
 
+    # Preferences must be resolved before relative dates and times. LLM JSON
+    # field order should never decide which timezone "today" or "now" uses.
+    aliased_payload = {aliases.get(key, key): value for key, value in payload.items()}
+    timezone_value = aliased_payload.get("interaction_timezone")
+    if timezone_value is not None:
+        normalized_timezone = _normalize_timezone(str(timezone_value), prefs.timezone)
+        patch["interaction_timezone"] = normalized_timezone
+        prefs = prefs.model_copy(update={"timezone": normalized_timezone})
+    date_format_value = aliased_payload.get("date_format")
+    if date_format_value is not None:
+        normalized_date_format = _normalize_date_format(str(date_format_value), prefs.date_format)
+        patch["date_format"] = normalized_date_format
+        prefs = prefs.model_copy(update={"date_format": normalized_date_format})
+    time_format_value = aliased_payload.get("time_format")
+    if time_format_value is not None:
+        normalized_time_format = _normalize_time_format(str(time_format_value), prefs.time_format)
+        patch["time_format"] = normalized_time_format
+        prefs = prefs.model_copy(update={"time_format": normalized_time_format})
+
     for raw_key, raw_value in payload.items():
         key = aliases.get(raw_key, raw_key)
         if key not in VALID_FIELDS or key in SYSTEM_TOOL_FIELDS or raw_value is None:
             continue
+        if key in {"interaction_timezone", "date_format", "time_format"}:
+            continue
         if key in LIST_FIELDS:
             patch[key] = _as_list(raw_value)
-        elif key == "interaction_timezone":
-            patch[key] = _normalize_timezone(str(raw_value), prefs.timezone)
-            prefs = prefs.model_copy(update={"timezone": patch[key]})
-        elif key == "date_format":
-            patch[key] = _normalize_date_format(str(raw_value), prefs.date_format)
-            prefs = prefs.model_copy(update={"date_format": patch[key]})
-        elif key == "time_format":
-            patch[key] = _normalize_time_format(str(raw_value), prefs.time_format)
-            prefs = prefs.model_copy(update={"time_format": patch[key]})
         elif key in {"interaction_date", "follow_up_date"}:
             parsed = _parse_date(str(raw_value), prefs)
             patch[key] = _display_date(parsed, prefs) if parsed else str(raw_value).strip()
@@ -337,7 +356,7 @@ def _apply_patch(current_draft: dict[str, Any], patch: dict[str, Any]) -> Intera
     data = draft.model_dump()
     old_preferences = InteractionPreferences(
         timezone=data.get("interaction_timezone") or "Asia/Kolkata",
-        date_format=data.get("date_format") or "MM/DD/YYYY",
+        date_format=data.get("date_format") or "DD/MM/YYYY",
         time_format=data.get("time_format") or "12h",
     )
     for key, value in patch.items():
@@ -416,7 +435,7 @@ def _normalize_time_format(value: str, fallback: str) -> str:
 def _build_utc_datetime(data: dict[str, Any]) -> datetime | None:
     prefs = InteractionPreferences(
         timezone=data.get("interaction_timezone") or "Asia/Kolkata",
-        date_format=data.get("date_format") or "MM/DD/YYYY",
+        date_format=data.get("date_format") or "DD/MM/YYYY",
         time_format=data.get("time_format") or "12h",
     )
     date_value = _parse_date(str(data.get("interaction_date") or ""), prefs)
@@ -425,7 +444,7 @@ def _build_utc_datetime(data: dict[str, Any]) -> datetime | None:
         return None
     local_zone = _safe_timezone(prefs.timezone)
     local_dt = datetime.combine(date_value.date(), time_value, local_zone)
-    return local_dt.astimezone(timezone.utc)
+    return local_dt.astimezone(datetime_timezone.utc)
 
 
 class LogInteractionArgs(BaseModel):
@@ -648,16 +667,18 @@ def schedule_follow_up(
     """Store a follow-up date only when the user or planner explicitly provides one."""
     prefs = _preferences(preferences)
     draft = InteractionDraft(**(current_draft or {}))
+    effective_preferences = InteractionPreferences(
+        timezone=draft.interaction_timezone or prefs.timezone,
+        date_format=draft.date_format or prefs.date_format,
+        time_format=draft.time_format or prefs.time_format,
+    )
     if requested_date:
-        parsed = _parse_date(requested_date, prefs)
-        follow_up = _display_date(parsed, prefs) if parsed else requested_date
+        parsed = _parse_date(requested_date, effective_preferences)
+        follow_up = _display_date(parsed, effective_preferences) if parsed else requested_date
         updated = _apply_patch(
             draft.model_dump(),
             {
                 "follow_up_date": follow_up,
-                "interaction_timezone": prefs.timezone,
-                "date_format": prefs.date_format,
-                "time_format": prefs.time_format,
             },
         )
         return {
@@ -665,22 +686,39 @@ def schedule_follow_up(
             "summary": f"Stored explicit follow-up date: {follow_up}.",
         }
 
-    updated = _apply_patch(
-        draft.model_dump(),
-        {
-            "interaction_timezone": prefs.timezone,
-            "date_format": prefs.date_format,
-            "time_format": prefs.time_format,
-        },
-    )
     if draft.follow_up_date:
         return {
-            "draft": updated.model_dump(),
+            "draft": draft.model_dump(),
             "summary": f"Kept existing follow-up date: {draft.follow_up_date}.",
         }
     return {
-        "draft": updated.model_dump(),
+        "draft": draft.model_dump(),
         "summary": "No explicit follow-up date was provided.",
+    }
+
+
+class CurrentDateTimeArgs(BaseModel):
+    timezone: str = ""
+    preferences: dict[str, Any] = Field(default_factory=dict)
+
+
+def get_current_datetime(
+    timezone: str = "",
+    preferences: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Fetch the live date and time in the requested or active timezone."""
+    prefs = _preferences(preferences)
+    selected_timezone = _normalize_timezone(timezone, prefs.timezone) if timezone else prefs.timezone
+    active_preferences = prefs.model_copy(update={"timezone": selected_timezone})
+    current = _now_in_timezone(selected_timezone)
+    current_date = _display_date(current, active_preferences)
+    current_time = _display_time(current.time(), active_preferences)
+    return {
+        "timezone": selected_timezone,
+        "date": current_date,
+        "time": current_time,
+        "utc": current.astimezone(datetime_timezone.utc).isoformat(),
+        "summary": f"Current date and time in {selected_timezone}: {current_date} at {current_time}.",
     }
 
 
@@ -733,6 +771,12 @@ TOOL_REGISTRY: dict[str, StructuredTool] = {
         description="Custom tool: generate a clean CRM-ready summary from the structured interaction.",
         args_schema=SummaryArgs,
     ),
+    "get_current_datetime": StructuredTool.from_function(
+        func=get_current_datetime,
+        name="get_current_datetime",
+        description="Custom tool: fetch the live date and time in the requested or active timezone.",
+        args_schema=CurrentDateTimeArgs,
+    ),
 }
 
 
@@ -745,6 +789,7 @@ TOOL_LABELS = {
     "schedule_follow_up": "Follow-up Scheduler",
     "validate_interaction": "Validate Record",
     "interaction_summary": "CRM Summary",
+    "get_current_datetime": "Live Date & Time",
 }
 
 
