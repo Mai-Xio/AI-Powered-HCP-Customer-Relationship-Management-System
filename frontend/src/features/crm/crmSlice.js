@@ -214,6 +214,8 @@ const crmSlice = createSlice({
     builder
       .addCase(sendAgentMessage.pending, (state, action) => {
         state.status = "loading";
+        state.saveStatus = "idle";
+        state.savedInteractionId = null;
         state.error = "";
         state.messages.push({ role: "user", content: action.meta.arg, tools: [] });
       })
