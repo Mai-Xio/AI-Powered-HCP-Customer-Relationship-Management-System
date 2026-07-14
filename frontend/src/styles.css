@@ -470,6 +470,53 @@ textarea::placeholder {
   white-space: pre-wrap;
 }
 
+.tool-trace {
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(75, 111, 91, 0.16);
+}
+
+.tool-trace-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #53645c;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.tool-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 24px;
+  border: 1px solid #c9ddd2;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #285f49;
+  background: #f3f9f4;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.tool-chip svg {
+  flex: 0 0 auto;
+  color: #2d7959;
+}
+
+.tool-needs_review {
+  color: #805c20;
+  border-color: #e2d09d;
+  background: #fff9e9;
+}
+
 .assistant-message {
   background: #f7fbf0;
   border: 1px solid #d2ddc4;
@@ -545,6 +592,10 @@ textarea::placeholder {
   display: block;
 }
 
+.composer-column {
+  min-width: 0;
+}
+
 .composer-box textarea {
   min-height: 80px;
   max-height: 138px;
@@ -553,11 +604,55 @@ textarea::placeholder {
   background: rgba(255, 255, 252, 0.82);
 }
 
-.composer-box svg {
+.voice-control {
   position: absolute;
   left: 17px;
-  bottom: 15px;
-  color: #55656f;
+  bottom: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 7px;
+  color: #38606c;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.voice-control:hover:not(:disabled) {
+  color: #086c85;
+  background: #edf7f8;
+}
+
+.voice-control:disabled {
+  color: #829196;
+}
+
+.composer-box.is-recording textarea {
+  border-color: #c86666;
+  box-shadow: 0 0 0 3px rgba(181, 58, 58, 0.08);
+}
+
+.composer-box.is-recording .voice-control {
+  color: #a52d2d;
+  background: #fff0ee;
+}
+
+.voice-message {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  margin: 5px 2px 0;
+  color: #53666d;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.voice-error {
+  color: #a52d2d;
 }
 
 .agent-submit {
@@ -904,6 +999,10 @@ select {
     grid-template-columns: 1fr;
     height: auto;
     min-height: 100dvh;
+  }
+
+  .form-panel {
+    overflow: visible;
   }
 
   .assistant-panel {

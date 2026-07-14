@@ -46,3 +46,24 @@ export function checkModels(modelIds) {
     body: JSON.stringify({ model_ids: modelIds ?? null }),
   });
 }
+
+export async function transcribeAudio(audioBlob, filename = "voice-note.webm") {
+  const body = new FormData();
+  body.append("file", audioBlob, filename);
+  const response = await fetch(`${API_BASE}/audio/transcribe`, {
+    method: "POST",
+    body,
+  });
+
+  if (!response.ok) {
+    const rawDetail = await response.text();
+    let detail = rawDetail || "Voice transcription failed.";
+    try {
+      const payload = JSON.parse(rawDetail);
+      detail = payload.detail || detail;
+    } catch {}
+    throw new Error(detail);
+  }
+
+  return response.json();
+}

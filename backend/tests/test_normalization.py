@@ -4,7 +4,11 @@ These are pure-function tests (no LLM, no graph) that lock in the typo/format
 robustness the assignment cares about, independent of what any model returns.
 """
 
-from app.agent.tools import _parse_date, normalize_hcp_name, normalize_sentiment
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from app.agent import tools
+from app.agent.tools import _normalize_patch, _parse_date, get_current_datetime, normalize_hcp_name, normalize_sentiment
 from app.schemas import InteractionPreferences
 
 
@@ -41,3 +45,35 @@ def test_parse_date_accepts_ordinals_and_month_names():
     assert d is not None and (d.month, d.day) == (4, 22)
     d = _parse_date("2025-04-19", prefs)
     assert d is not None and (d.month, d.day) == (4, 19)
+
+
+def test_today_and_now_use_explicit_timezone_regardless_of_field_order(monkeypatch):
+    def fixed_now(timezone_name: str) -> datetime:
+        return datetime(2026, 7, 14, 18, 5, tzinfo=ZoneInfo(timezone_name))
+
+    monkeypatch.setattr(tools, "_now_in_timezone", fixed_now)
+    patch = _normalize_patch(
+        {
+            "interaction_date": "today",
+            "interaction_time": "now",
+            "interaction_timezone": "Asia/Dubai",
+        },
+        InteractionPreferences(),
+    )
+
+    assert patch["interaction_timezone"] == "Asia/Dubai"
+    assert patch["interaction_date"] == "14/07/2026"
+    assert patch["interaction_time"] == "06:05 PM"
+
+
+def test_live_datetime_uses_default_date_and_time_formats(monkeypatch):
+    monkeypatch.setattr(
+        tools,
+        "_now_in_timezone",
+        lambda timezone_name: datetime(2026, 7, 14, 9, 7, tzinfo=ZoneInfo(timezone_name)),
+    )
+
+    result = get_current_datetime(preferences=InteractionPreferences().model_dump())
+
+    assert result["date"] == "14/07/2026"
+    assert result["time"] == "09:07 AM"

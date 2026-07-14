@@ -10,7 +10,7 @@ def test_log_interaction_invokes_required_tool_chain():
     )
 
     assert response.draft.hcp_name == "Dr. Meera Kapoor"
-    assert response.draft.interaction_date == "04/19/2025"
+    assert response.draft.interaction_date == "19/04/2025"
     assert response.draft.sentiment == "Positive"
     assert "Prodo-X efficacy" in response.draft.topics_discussed
     assert "brochure" in response.draft.materials_shared
@@ -126,3 +126,27 @@ def test_edit_can_update_time_preferences_without_overwriting_crm_fields():
     assert edited.draft.interaction_datetime_utc is not None
     edit_trace = next(trace for trace in edited.tool_trace if trace.name == "edit_interaction")
     assert edit_trace.payload["changed_fields"] == ["interaction_timezone", "time_format"]
+
+
+def test_live_datetime_tool_uses_requested_timezone():
+    response = run_agent("What is today's date and current time in Dubai?")
+
+    clock_trace = next(trace for trace in response.tool_trace if trace.name == "get_current_datetime")
+    assert clock_trace.payload["timezone"] == "Asia/Dubai"
+    assert clock_trace.payload["date"]
+    assert clock_trace.payload["time"].endswith(("AM", "PM"))
+    assert "Asia/Dubai" in response.assistant_message
+
+
+def test_explicit_timezone_survives_the_full_automatic_tool_chain():
+    response = run_agent(
+        "Met Dr. Rao today at the current time in Dubai. Discussed CardioPlus efficacy, "
+        "positive sentiment, and shared a brochure."
+    )
+
+    assert response.draft.interaction_timezone == "Asia/Dubai"
+    assert response.draft.date_format == "DD/MM/YYYY"
+    assert response.draft.time_format == "12h"
+    assert response.draft.interaction_date
+    assert response.draft.interaction_time.endswith(("AM", "PM"))
+    assert response.draft.interaction_datetime_utc is not None

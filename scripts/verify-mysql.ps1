@@ -101,11 +101,11 @@ try {
     $draft = @{
       hcp_name = "Dr. MySQL Smoke"
       interaction_type = "Meeting"
-      interaction_date = "07/10/2026"
+      interaction_date = "10/07/2026"
       interaction_time = "10:30 AM"
       interaction_timezone = "Asia/Kolkata"
       original_timezone = "Asia/Kolkata"
-      date_format = "MM/DD/YYYY"
+      date_format = "DD/MM/YYYY"
       time_format = "12h"
       time_format_preference = "12h"
       topics_discussed = "MySQL persistence smoke test"

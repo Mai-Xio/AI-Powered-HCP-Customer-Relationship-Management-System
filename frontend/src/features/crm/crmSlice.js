@@ -16,7 +16,7 @@ export const emptyDraft = {
   interaction_datetime_utc: null,
   interaction_timezone: defaultTimezone(),
   original_timezone: defaultTimezone(),
-  date_format: "MM/DD/YYYY",
+  date_format: "DD/MM/YYYY",
   time_format: "12h",
   time_format_preference: "12h",
   attendees: [],
@@ -116,7 +116,7 @@ function formatTimeValue(parts, format) {
 
 function reformatDraftForPreference(draft, key, value) {
   if (key === "date_format") {
-    const oldFormat = draft.date_format || "MM/DD/YYYY";
+    const oldFormat = draft.date_format || "DD/MM/YYYY";
     const interactionDate = parseDateValue(draft.interaction_date, oldFormat);
     const followUpDate = parseDateValue(draft.follow_up_date, oldFormat);
     if (interactionDate) draft.interaction_date = formatDateValue(interactionDate, value);
@@ -160,7 +160,7 @@ const initialState = {
   draft: emptyDraft,
   preferences: {
     timezone: defaultTimezone(),
-    date_format: "MM/DD/YYYY",
+    date_format: "DD/MM/YYYY",
     time_format: "12h",
   },
   messages: [
@@ -214,6 +214,8 @@ const crmSlice = createSlice({
     builder
       .addCase(sendAgentMessage.pending, (state, action) => {
         state.status = "loading";
+        state.saveStatus = "idle";
+        state.savedInteractionId = null;
         state.error = "";
         state.messages.push({ role: "user", content: action.meta.arg, tools: [] });
       })

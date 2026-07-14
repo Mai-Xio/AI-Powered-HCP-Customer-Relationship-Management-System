@@ -57,7 +57,7 @@ def _execute_tools_node(state: AgentState) -> AgentState:
 
         args = dict(call.arguments)
         args.setdefault("current_draft", draft.model_dump())
-        if call.tool_name in {"log_interaction", "edit_interaction", "schedule_follow_up"}:
+        if call.tool_name in {"log_interaction", "edit_interaction", "schedule_follow_up", "get_current_datetime"}:
             args.setdefault("preferences", state.get("preferences", {}))
         if call.tool_name == "recommend_next_best_action":
             args.setdefault("profile", profile)

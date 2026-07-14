@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+import logging
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from pydantic import BaseModel
 
@@ -13,17 +15,35 @@ from app.config import get_settings
 from app.crud import list_hcp_profiles, save_interaction, seed_hcp_profiles
 from app.db import Base, SessionLocal, engine, get_db
 from app.models import HCPProfile, Interaction
-from app.schemas import ChatRequest, ChatResponse, HCPProfileOut, InteractionDraft, InteractionOut
+from app.schemas import (
+    AudioTranscriptionResponse,
+    ChatRequest,
+    ChatResponse,
+    HCPProfileOut,
+    InteractionDraft,
+    InteractionOut,
+)
+from app.speech import SpeechConfigurationError, SpeechError, SpeechRateLimitError, transcribe_audio
+
+
+logger = logging.getLogger(__name__)
+database_ready = False
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
+    global database_ready
     try:
-        seed_hcp_profiles(db)
-    finally:
-        db.close()
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        try:
+            seed_hcp_profiles(db)
+        finally:
+            db.close()
+        database_ready = True
+    except SQLAlchemyError as exc:
+        database_ready = False
+        logger.warning("Database unavailable at startup; AI and voice routes remain active: %s", exc)
     yield
 
 
@@ -39,8 +59,8 @@ app.add_middleware(
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": settings.app_name}
+def health() -> dict[str, str | bool]:
+    return {"status": "ok", "service": settings.app_name, "database_ready": database_ready}
 
 
 @app.get(f"{settings.api_prefix}/tools")
@@ -62,6 +82,8 @@ def get_empty_draft() -> InteractionDraft:
 
 @app.get(f"{settings.api_prefix}/hcps", response_model=list[HCPProfileOut])
 def get_hcps(db: Session = Depends(get_db)) -> list[HCPProfile]:
+    if not database_ready:
+        raise HTTPException(status_code=503, detail="The SQL database is currently unavailable.")
     return list_hcp_profiles(db)
 
 
@@ -73,6 +95,22 @@ def chat(request: ChatRequest) -> ChatResponse:
         request.preferences,
         model_override=request.planner_model,
     )
+
+
+@app.post(f"{settings.api_prefix}/audio/transcribe", response_model=AudioTranscriptionResponse)
+async def transcribe_voice(file: UploadFile = File(...)) -> dict[str, str]:
+    data = await file.read(settings.voice_max_upload_bytes + 1)
+    try:
+        return transcribe_audio(file.filename or "voice-note.webm", file.content_type, data)
+    except ValueError as exc:
+        status_code = 413 if "20 MB" in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    except SpeechConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SpeechRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except SpeechError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get(f"{settings.api_prefix}/models")
@@ -99,4 +137,6 @@ def create_interaction(
     draft: InteractionDraft,
     db: Session = Depends(get_db),
 ) -> Interaction:
+    if not database_ready:
+        raise HTTPException(status_code=503, detail="The SQL database is currently unavailable.")
     return save_interaction(db, draft)

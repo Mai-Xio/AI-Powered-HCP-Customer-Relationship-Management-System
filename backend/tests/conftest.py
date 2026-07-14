@@ -42,6 +42,36 @@ def _user_message(messages) -> str:
 
 def _plan_for(text: str) -> dict:
     low = text.lower()
+    # --- live date/time lookup ---
+    if ("current time" in low or "today's date" in low) and "met " not in low:
+        timezone = "Asia/Dubai" if "dubai" in low else ""
+        return {
+            "intent": "get_current_datetime",
+            "confidence": "high",
+            "extracted_fields": {},
+            "tool_calls": [
+                {
+                    "tool_name": "get_current_datetime",
+                    "arguments": {"timezone": timezone},
+                    "reason": "fake live clock request",
+                }
+            ],
+        }
+    if "dr. rao" in low and "current time" in low and "dubai" in low:
+        return _wrap(
+            "log_interaction",
+            {
+                "hcp_name": "Dr. Rao",
+                "interaction_date": "today",
+                "interaction_time": "now",
+                "interaction_timezone": "Asia/Dubai",
+                "topics_discussed": "CardioPlus efficacy",
+                "products_discussed": "CardioPlus",
+                "sentiment": "Positive",
+                "materials_shared": "brochure",
+            },
+            "log_interaction",
+        )
     # --- display-preference edit ---
     if "24-hour" in low or "24 hour" in low:
         return _wrap("edit_interaction", {"time_format": "24h", "interaction_timezone": "Asia/Dubai"}, "edit_interaction")
