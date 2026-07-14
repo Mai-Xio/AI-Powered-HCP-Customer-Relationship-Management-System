@@ -1,8 +1,8 @@
 # AI Powered HCP Customer Relationship Management System
 
-An AI-controlled HCP interaction logging system built for the AIVOA Full Stack Developer AI Applications assessment. The app helps field representatives convert natural conversation into a structured CRM record using a FastAPI backend, LangGraph tool workflow, and Groq LLM planning.
+An AI-controlled HCP interaction logging system. The app helps field representatives convert natural conversation into a structured CRM record using a FastAPI backend, LangGraph tool workflow, and Groq LLM planning.
 
-The main rule is simple: the user does not directly fill the final CRM form. The left panel is treated as an AI-managed interaction record, while the right panel assistant logs, edits, validates, and saves the interaction through LangGraph tools.
+The main requirement that I fulfilled: the user does not directly fill the final CRM form. The left panel is treated as an AI-managed interaction record, while the right panel assistant logs, edits, validates, and saves the interaction through LangGraph tools.
 
 **For this Assessment I would also like to mention the improvements I made along with implementing the required features.**
 
